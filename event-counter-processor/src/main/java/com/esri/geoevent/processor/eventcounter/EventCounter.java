@@ -169,7 +169,8 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
         Date time1 = calendar1.getTime();
 
         clearCacheTimer = new Timer();
-        clearCacheTimer.scheduleAtFixedRate(new ClearCacheTask(), time1, 8640000L);
+        Long dayInMilliSeconds = 60*60*24*1000L;
+        clearCacheTimer.scheduleAtFixedRate(new ClearCacheTask(), time1, dayInMilliSeconds);
       }
     }
 
