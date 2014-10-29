@@ -12,10 +12,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
-import com.esri.geoevent.processor.eventcounter.EventCountNotificationMode;
 import com.esri.ges.core.component.ComponentException;
 import com.esri.ges.core.geoevent.FieldException;
 import com.esri.ges.core.geoevent.GeoEvent;
@@ -23,8 +19,9 @@ import com.esri.ges.core.geoevent.GeoEventCache;
 import com.esri.ges.core.geoevent.GeoEventDefinition;
 import com.esri.ges.core.geoevent.GeoEventPropertyName;
 import com.esri.ges.core.validation.ValidationException;
+import com.esri.ges.framework.i18n.BundleLogger;
+import com.esri.ges.framework.i18n.BundleLoggerFactory;
 import com.esri.ges.messaging.EventDestination;
-import com.esri.ges.messaging.EventProducer;
 import com.esri.ges.messaging.EventUpdatable;
 import com.esri.ges.messaging.GeoEventCreator;
 import com.esri.ges.messaging.GeoEventProducer;
@@ -35,21 +32,22 @@ import com.esri.ges.processor.GeoEventProcessorDefinition;
 import com.esri.ges.util.Converter;
 import com.esri.ges.util.Validator;
 
-public class EventCounter extends CacheEnabledGeoEventProcessor implements Observer, EventProducer, EventUpdatable
+public class EventCounter extends CacheEnabledGeoEventProcessor implements Observer, GeoEventProducer, EventUpdatable
 {
-  private static final Log                     log                      = LogFactory.getLog(EventCounter.class);
-  private EventCountNotificationMode           notificationMode;
+	private static final BundleLogger							LOGGER				= BundleLoggerFactory.getLogger(EventCounter.class);
+
+	private EventCountNotificationMode           notificationMode;
   private long                                 reportInterval;
   private final Map<String, EventCountMonitor> eventCountMonitors       = new ConcurrentHashMap<String, EventCountMonitor>();
   private final Map<String, Thread>            eventCountMonitorThreads = new ConcurrentHashMap<String, Thread>();
   private Messaging                            messaging;
   private GeoEventCreator                      geoEventCreator;
   private GeoEventProducer                     geoEventProducer;
-  private EventDestination                     destination;
   private boolean                              autoResetCounter;
   private Date                                 resetTime;
   private boolean                              clearCache;
   private Timer                                clearCacheTimer;
+	private boolean																isInitialized	= false;
 
   class ClearCacheTask extends TimerTask
   {
@@ -83,25 +81,28 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
 
   public void afterPropertiesSet()
   {
-    notificationMode = Validator.validateEnum(EventCountNotificationMode.class, getProperty("notificationMode").getValueAsString(), EventCountNotificationMode.OnChange);
-    reportInterval = Converter.convertToInteger(getProperty("reportInterval").getValueAsString(), 10) * 1000;
-    autoResetCounter = Converter.convertToBoolean(getProperty("autoResetCounter").getValueAsString());
-    String[] resetTimeStr = getProperty("resetTime").getValueAsString().split(":");
-    // Get the Date corresponding to 11:01:00 pm today.
-    Calendar calendar = Calendar.getInstance();
-    calendar.set(Calendar.HOUR_OF_DAY, Integer.parseInt(resetTimeStr[0]));
-    calendar.set(Calendar.MINUTE, Integer.parseInt(resetTimeStr[1]));
-    calendar.set(Calendar.SECOND, Integer.parseInt(resetTimeStr[2]));
-    resetTime = calendar.getTime();
-    clearCache = Converter.convertToBoolean(getProperty("clearCache").getValueAsString());
+  	if (!isInitialized)
+		{
+	    notificationMode = Validator.valueOfIgnoreCase(EventCountNotificationMode.class, getProperty("notificationMode").getValueAsString(), EventCountNotificationMode.OnChange);
+	    reportInterval = Converter.convertToInteger(getProperty("reportInterval").getValueAsString(), 10) * 1000;
+	    autoResetCounter = Converter.convertToBoolean(getProperty("autoResetCounter").getValueAsString());
+	    String[] resetTimeStr = getProperty("resetTime").getValueAsString().split(":");
+	    // Get the Date corresponding to 11:01:00 pm today.
+	    Calendar calendar = Calendar.getInstance();
+	    calendar.set(Calendar.HOUR_OF_DAY, Integer.parseInt(resetTimeStr[0]));
+	    calendar.set(Calendar.MINUTE, Integer.parseInt(resetTimeStr[1]));
+	    calendar.set(Calendar.SECOND, Integer.parseInt(resetTimeStr[2]));
+	    resetTime = calendar.getTime();
+	    clearCache = Converter.convertToBoolean(getProperty("clearCache").getValueAsString());
+	    isInitialized = true;
+		}
   }
 
   @Override
   public void setId(String id)
   {
     super.setId(id);
-    destination = new EventDestination(getId() + ":event");
-    geoEventProducer = messaging.createGeoEventProducer(destination.getName());
+		geoEventProducer = messaging.createGeoEventProducer(new EventDestination(id + ":event"));
   }
 
   @Override
@@ -112,10 +113,10 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
   }
 
   @Override
-  public List<EventDestination> getEventDestinations()
-  {
-    return Arrays.asList(destination);
-  }
+	public List<EventDestination> getEventDestinations()
+	{
+		return (geoEventProducer != null) ? Arrays.asList(geoEventProducer.getEventDestination()) : new ArrayList<EventDestination>();
+	}
 
   @Override
   public void validate() throws ValidationException
@@ -123,13 +124,13 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
     super.validate();
     List<String> errors = new ArrayList<String>();
     if (reportInterval <= 0)
-      errors.add("'" + definition.getName() + "' property 'reportInterval' is invalid.");
+      errors.add(LOGGER.translate("VALIDATION_INVALID_REPORT_INTERVAL", definition.getName()));
     if (errors.size() > 0)
     {
       StringBuffer sb = new StringBuffer();
       for (String message : errors)
         sb.append(message).append("\n");
-      throw new ValidationException(this.getClass().getName() + " validation failed: " + sb.toString());
+      throw new ValidationException(LOGGER.translate("VALIDATION_ERROR", this.getClass().getName(), sb.toString()));
     }
   }
 
@@ -147,9 +148,10 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
         {
           send(createEventCounterGeoEvent(gapEvent));
         }
-        catch (MessagingException e)
+        catch (MessagingException error)
         {
-          log.error("Failed to send Event Count GeoEvent: ", e);
+        	LOGGER.error("SEND_REPORT_ERROR", gapEvent, error.getMessage());
+  				LOGGER.info(error.getMessage(), error);
         }
       }
     }
@@ -217,7 +219,7 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
   @Override
   public EventDestination getEventDestination()
   {
-    return destination;
+  	return (geoEventProducer != null) ? geoEventProducer.getEventDestination() : null;
   }
 
   @Override
@@ -284,10 +286,11 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
         gapEvent.setProperty(GeoEventPropertyName.OWNER_ID, getId());
         gapEvent.setProperty(GeoEventPropertyName.OWNER_URI, definition.getUri());
       }
-      catch (FieldException e)
+      catch (FieldException error)
       {
         gapEvent = null;
-        log.error("Failed to create Event Count GeoEvent: " + e.getMessage());
+        LOGGER.error("CREATE_GEOEVENT_FAILED", error.getMessage());
+				LOGGER.info(error.getMessage(), error);
       }
     }
     return gapEvent;
@@ -295,9 +298,40 @@ public class EventCounter extends CacheEnabledGeoEventProcessor implements Obser
 
   public void setMessaging(Messaging messaging)
   {
-    this.messaging = messaging;
-    geoEventCreator = messaging.createGeoEventCreator();
+  	this.messaging = messaging;
+		geoEventCreator = messaging.createGeoEventCreator();
   }
+  
+  @Override
+	public void disconnect()
+	{
+		if (geoEventProducer != null)
+			geoEventProducer.disconnect();
+	}
+
+	@Override
+	public String getStatusDetails()
+	{
+		return (geoEventProducer != null) ? geoEventProducer.getStatusDetails() : "";
+	}
+
+	@Override
+	public void init() throws MessagingException
+	{
+		afterPropertiesSet();
+	}
+
+	@Override
+	public boolean isConnected()
+	{
+		return (geoEventProducer != null) ? geoEventProducer.isConnected() : false;
+	}
+
+	@Override
+	public void setup() throws MessagingException
+	{
+		;
+	}
 }
 
 final class EventCountMonitor extends Observable implements Runnable
