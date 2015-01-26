@@ -1,6 +1,6 @@
 # event-counter-for-geoevent
 
-ArcGIS 10.3 GeoEvent Extension sample Event Counter Processor for counting GeoEvents.
+ArcGIS 10.3.x GeoEvent Extension sample Event Counter Processor for counting GeoEvents.
 
 ![App](event-counter-for-geoevent.png?raw=true)
 
