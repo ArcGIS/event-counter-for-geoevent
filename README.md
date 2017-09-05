@@ -1,6 +1,6 @@
 # event-counter-for-geoevent
 
-ArcGIS 10.3.x GeoEvent Extension sample Event Counter Processor for counting GeoEvents.
+ArcGIS GeoEvent Extension sample Event Counter Processor for counting GeoEvents.
 
 ![App](event-counter-for-geoevent.png?raw=true)
 
@@ -40,7 +40,7 @@ Find a bug or want to request a new feature?  Please let us know by submitting a
 Esri welcomes contributions from anyone and everyone. Please see our [guidelines for contributing](https://github.com/esri/contributing).
 
 ## Licensing
-Copyright 2013 Esri
+Copyright 2017 Esri
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
